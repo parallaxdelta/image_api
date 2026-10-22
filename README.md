@@ -83,7 +83,34 @@ TODO
 
 ## Deployment
 
-TODO
+AWS, defined in [infra/](infra/) with CDK (TypeScript):
+
+```
+Browser ─▶ CloudFront (HTTPS, shared cache keyed on query string)
+             └─ OAC-signed ─▶ Lambda Function URL (IAM auth: CloudFront only)
+                               └─ Lambda: this repo's Dockerfile + AWS Lambda Web Adapter
+```
+
+- The same container image runs locally (`docker run`) and on Lambda; the Web Adapter
+  extension is inert outside Lambda.
+- CloudFront caches successful `/process` responses per `Cache-Control` (1 day); errors and
+  `/health` send `no-store`.
+- Concurrency is the hard cost/abuse ceiling: new AWS accounts cap Lambda at 10 concurrent
+  executions account-wide (and refuse per-function reservations); on larger accounts pass
+  `-c reservedConcurrency=10` to `cdk deploy`. The in-app rate limiter keys on
+  `CloudFront-Viewer-Address`, which is trustworthy because the function URL only accepts
+  CloudFront-signed requests.
+- Cold starts of ~1–2s are expected after idle periods.
+
+Prerequisites: Docker, AWS credentials in the CLI (`aws configure` or `aws login`).
+
+```bash
+cd infra
+npm install
+npx cdk bootstrap   # once per account/region
+npx cdk deploy      # builds the image, pushes to ECR, prints the CloudFront URL
+npx cdk destroy     # tear down
+```
 
 ## What I'd do next
 

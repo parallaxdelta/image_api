@@ -22,6 +22,9 @@ const EnvSchema = z.object({
   // Abuse + caching
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(60),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
+  // Header carrying the real client IP, set by a proxy you control (e.g. CloudFront-Viewer-Address).
+  // Only set this when clients cannot reach the app except through that proxy.
+  CLIENT_IP_HEADER: z.string().toLowerCase().optional(),
   CACHE_MAX_BYTES: z.coerce.number().int().positive().default(100 * 1024 * 1024),
   CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(86_400),
 });

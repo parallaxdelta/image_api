@@ -14,11 +14,21 @@ export interface ProcessRouteOptions {
   fetchSource: SourceFetcher;
 }
 
+/** Strip the port from "ip:port" / "[v6]:port"-style values such as CloudFront-Viewer-Address. */
+export function clientIp(header: string | string[] | undefined): string | undefined {
+  const value = Array.isArray(header) ? header[0] : header;
+  if (!value) return undefined;
+  const lastColon = value.lastIndexOf(':');
+  const ip = lastColon > 0 && /^\d+$/.test(value.slice(lastColon + 1)) ? value.slice(0, lastColon) : value;
+  return ip.replace(/^\[|\]$/g, '') || undefined;
+}
+
 export const processRoutes: FastifyPluginAsync<ProcessRouteOptions> = async (app, { config, cache, fetchSource }) => {
   // Scoped to this plugin: rate limiting applies to /process, not /health or the UI.
   await app.register(rateLimit, {
     max: config.RATE_LIMIT_MAX,
     timeWindow: config.RATE_LIMIT_WINDOW_MS,
+    keyGenerator: (req) => clientIp(req.headers[config.CLIENT_IP_HEADER ?? '']) ?? req.ip,
     errorResponseBuilder: (_req, ctx) =>
       new ApiError('RATE_LIMITED', `Rate limit of ${ctx.max} requests per ${ctx.after} exceeded; retry later`),
   });

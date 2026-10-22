@@ -35,10 +35,11 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
   // Must be set before routes register: Fastify plugins inherit handlers at registration time.
   app.setNotFoundHandler((req, reply) => {
     const err = new ApiError('NOT_FOUND', `No route for ${req.method} ${req.url.split('?')[0]}`);
-    reply.code(err.statusCode).send(err.toBody(req.id));
+    reply.code(err.statusCode).header('cache-control', 'no-store').send(err.toBody(req.id));
   });
 
   app.setErrorHandler((error, req, reply) => {
+    reply.header('cache-control', 'no-store'); // never let a CDN cache an error
     if (error instanceof ApiError) {
       // Upstream causes are logged for operators but never sent to clients.
       if (error.statusCode >= 500) req.log.warn({ code: error.code, err: error.cause ?? error }, error.message);
@@ -64,7 +65,10 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
     ],
   });
 
-  app.get('/health', async () => ({ status: 'ok', uptimeSeconds: Math.round(process.uptime()), cache: { hits: cache.hits, misses: cache.misses } }));
+  app.get('/health', async (_req, reply) => {
+    reply.header('cache-control', 'no-store');
+    return { status: 'ok', uptimeSeconds: Math.round(process.uptime()), cache: { hits: cache.hits, misses: cache.misses } };
+  });
 
   await app.register(processRoutes, { config, cache, fetchSource });
   await app.register(fastifyStatic, { root: PUBLIC_DIR, prefix: '/' });

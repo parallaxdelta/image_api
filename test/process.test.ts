@@ -94,3 +94,20 @@ describe('explorer UI', () => {
     expect(res.body).toContain('Image API Explorer');
   });
 });
+
+describe('behind a CDN', () => {
+  it('marks errors and /health as uncacheable', async () => {
+    const app = await testApp(fakeFetcher({}));
+    expect((await app.inject('/process')).headers['cache-control']).toBe('no-store');
+    expect((await app.inject('/nope')).headers['cache-control']).toBe('no-store');
+    expect((await app.inject('/health')).headers['cache-control']).toBe('no-store');
+  });
+
+  it('rate limits per client IP from the trusted header, not the proxy address', async () => {
+    const app = await testApp(fakeFetcher({}), { RATE_LIMIT_MAX: '1', CLIENT_IP_HEADER: 'CloudFront-Viewer-Address' });
+    const as = (addr: string) => app.inject({ url: '/process', headers: { 'cloudfront-viewer-address': addr } });
+    expect((await as('203.0.113.7:51000')).statusCode).toBe(400);
+    expect((await as('203.0.113.7:51001')).statusCode).toBe(429); // same client, new port
+    expect((await as('198.51.100.2:443')).statusCode).toBe(400); // different client unaffected
+  });
+});

@@ -8,7 +8,10 @@ COPY src ./src
 RUN npm run build && npm prune --omit=dev
 
 FROM node:24-slim
-ENV NODE_ENV=production PORT=3000
+# AWS Lambda Web Adapter: lets this same image run on Lambda unchanged. It's a Lambda
+# extension, so it's inert under plain `docker run`. https://github.com/aws/aws-lambda-web-adapter
+COPY --from=public.ecr.aws/awsguru/aws-lambda-adapter:1.0.1 /lambda-adapter /opt/extensions/lambda-adapter
+ENV NODE_ENV=production PORT=3000 AWS_LWA_READINESS_CHECK_PATH=/health
 WORKDIR /app
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
