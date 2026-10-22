@@ -11,7 +11,7 @@ const els = {
   useQuality: form.elements.useQuality,
   quality: form.elements.quality,
   qualityOut: $('#qualityOut'),
-  submit: $('#submit'),
+  submit: $('#submitBtn'),
   hint: $('#hint'),
   requestUrl: $('#requestUrl'),
   copyUrl: $('#copyUrl'),
@@ -25,6 +25,56 @@ const LOSSY = new Set(['jpeg', 'webp', 'avif']);
 const PARAMS = ['url', 'width', 'height', 'format', 'crop', 'quality'];
 let inflight = null;
 let outputObjectUrl = null;
+
+// ---------- width/height autofill ----------
+// When a usable image URL is entered, prefill width/height with the source's
+// natural size as a starting point. Read client-side from the image itself, so
+// it costs no API call. Fields the user has typed into are never overwritten.
+
+let autofilled = { width: '', height: '' };
+let probeSeq = 0;
+let probeTimer = null;
+
+function isHttpUrl(value) {
+  try {
+    const u = new URL(value);
+    return u.protocol === 'http:' || u.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function canAutofill(field) {
+  return els[field].value === '' || els[field].value === autofilled[field];
+}
+
+/** Resolves once the probe is done (filled, failed, or superseded); never rejects. */
+function probeSourceSize(url) {
+  const seq = ++probeSeq;
+  if (!isHttpUrl(url)) return Promise.resolve();
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.referrerPolicy = 'no-referrer';
+    img.onload = () => {
+      resolve();
+      if (seq !== probeSeq || !img.naturalWidth) return; // a newer URL won the race
+      for (const [field, size] of [['width', img.naturalWidth], ['height', img.naturalHeight]]) {
+        if (!canAutofill(field)) continue;
+        els[field].value = autofilled[field] = String(size);
+      }
+      els.hint.textContent = `Width and height prefilled from the source (${img.naturalWidth} × ${img.naturalHeight}).`;
+      syncControls(false);
+    };
+    // On error, leave the fields alone; the API will report what's wrong on submit.
+    img.onerror = () => resolve();
+    img.src = url;
+  });
+}
+
+function scheduleProbe() {
+  clearTimeout(probeTimer);
+  probeTimer = setTimeout(() => probeSourceSize(els.url.value.trim()), 400);
+}
 
 // ---------- request building ----------
 
@@ -45,7 +95,7 @@ function requestUrl() {
   return p.has('url') ? `${location.origin}/process?${p}` : null;
 }
 
-function syncControls() {
+function syncControls(clearHint = true) {
   const hasDims = Boolean(els.width.value || els.height.value);
   els.crop.disabled = !hasDims;
   els.crop.title = hasDims ? '' : 'Set a width and/or height to choose a crop mode';
@@ -53,8 +103,8 @@ function syncControls() {
   els.quality.disabled = !els.useQuality.checked;
   els.qualityOut.textContent = els.useQuality.checked ? els.quality.value : 'default';
   const fmt = els.format.value;
-  els.hint.textContent =
-    els.useQuality.checked && fmt && !LOSSY.has(fmt) ? `Quality is ignored for ${fmt.toUpperCase()} output.` : '';
+  if (els.useQuality.checked && fmt && !LOSSY.has(fmt)) els.hint.textContent = `Quality is ignored for ${fmt.toUpperCase()} output.`;
+  else if (clearHint) els.hint.textContent = '';
 
   const url = requestUrl();
   els.requestUrl.textContent = url ?? 'Enter an image URL to build a request';
@@ -262,21 +312,27 @@ const shellQuote = (s) => `'${s.replaceAll("'", `'\\''`)}'`;
 
 // ---------- wiring ----------
 
-form.addEventListener('input', syncControls);
-form.addEventListener('change', syncControls);
+form.addEventListener('input', (e) => {
+  syncControls();
+  if (e.target === els.url) scheduleProbe();
+});
+form.addEventListener('change', () => syncControls());
 form.addEventListener('submit', (e) => { e.preventDefault(); run(); });
 
-$('.samples').addEventListener('click', (e) => {
+$('.samples').addEventListener('click', async (e) => {
   const sample = e.target.closest('button[data-sample]')?.dataset.sample;
   if (!sample) return;
   els.url.value = sample;
   syncControls();
+  await probeSourceSize(sample); // so the request shown matches the one that runs
   run();
 });
 
-$('#reset').addEventListener('click', () => {
+$('#resetBtn').addEventListener('click', () => {
   inflight?.abort();
   form.reset();
+  autofilled = { width: '', height: '' };
+  probeSeq++;
   clearError();
   setFrame(els.source, emptyNote('Pick a sample or paste an image URL.'));
   setFrame(els.output, emptyNote('The result shows up here.'));
@@ -293,4 +349,5 @@ els.copyCurl.addEventListener('click', () => {
 
 const restored = restoreFromPageUrl();
 syncControls();
+// A shared link is run exactly as given: no autofill, so the request matches the link.
 if (restored) run();
