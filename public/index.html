@@ -4,10 +4,88 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Image API Explorer</title>
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <!-- TODO(Part 2): explorer UI — see docs/PLAN.md. Must call /process like any other consumer. -->
-  <h1>Image API Explorer</h1>
-  <p>UI coming soon. Try <code>/process?url=…&amp;width=500&amp;format=webp</code> or <a href="/health">/health</a>.</p>
+  <header>
+    <h1>Image API Explorer</h1>
+    <p>Build a <code>GET /process</code> request, run it, and compare the result with the source.
+      Everything here goes through the public API. <a href="/health">/health</a></p>
+  </header>
+
+  <main>
+    <form id="form" novalidate>
+      <!-- novalidate on purpose: the API does validation, and this UI shows what it says -->
+      <label class="wide">Image URL
+        <input name="url" type="url" placeholder="https://example.com/photo.jpg" autocomplete="off">
+      </label>
+      <div class="samples" aria-label="Sample sources">
+        <span>Try:</span>
+        <button type="button" data-sample="https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png">Transparent PNG</button>
+        <button type="button" data-sample="https://upload.wikimedia.org/wikipedia/commons/3/3f/JPEG_example_flower.jpg">JPEG photo</button>
+        <button type="button" data-sample="https://example.com/" data-error>Not an image</button>
+        <button type="button" data-sample="http://169.254.169.254/latest/meta-data/" data-error>Internal address</button>
+      </div>
+
+      <label>Width <input name="width" type="number" min="1" max="4000" placeholder="auto"></label>
+      <label>Height <input name="height" type="number" min="1" max="4000" placeholder="auto"></label>
+      <label>Format
+        <select name="format">
+          <option value="">Same as source</option>
+          <option value="jpeg">JPEG</option>
+          <option value="png">PNG</option>
+          <option value="webp">WebP</option>
+          <option value="avif">AVIF</option>
+        </select>
+      </label>
+      <label>Crop
+        <select name="crop">
+          <option value="">fit (default)</option>
+          <option value="fill">fill: cover the box and crop the overflow</option>
+          <option value="scale">scale: stretch to the exact box</option>
+          <option value="pad">pad: fit inside the box and pad the rest</option>
+        </select>
+      </label>
+      <label class="quality">Quality
+        <span class="row">
+          <input name="useQuality" type="checkbox" aria-label="Set quality">
+          <input name="quality" type="range" min="1" max="100" value="80" disabled>
+          <output id="qualityOut">default</output>
+        </span>
+      </label>
+
+      <div class="actions wide">
+        <button type="submit" id="submit">Process image</button>
+        <button type="button" id="reset" class="secondary">Reset</button>
+        <span id="hint" class="hint"></span>
+      </div>
+    </form>
+
+    <section class="request" aria-label="Request">
+      <div class="request-row">
+        <span class="method">GET</span>
+        <code id="requestUrl">Enter an image URL to build a request</code>
+        <button type="button" id="copyUrl" class="secondary" disabled>Copy URL</button>
+        <button type="button" id="copyCurl" class="secondary" disabled>Copy curl</button>
+      </div>
+    </section>
+
+    <section id="error" class="error" hidden role="alert"></section>
+
+    <section class="compare">
+      <figure class="panel" id="sourcePanel">
+        <figcaption>Original</figcaption>
+        <div class="frame"><p class="empty">Pick a sample or paste an image URL.</p></div>
+        <dl class="meta"></dl>
+      </figure>
+      <figure class="panel" id="outputPanel">
+        <figcaption>Processed</figcaption>
+        <div class="frame"><p class="empty">The result shows up here.</p></div>
+        <dl class="meta"></dl>
+      </figure>
+    </section>
+  </main>
+
+  <script type="module" src="app.js"></script>
 </body>
 </html>

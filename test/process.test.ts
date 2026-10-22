@@ -84,3 +84,13 @@ describe('misc routes', () => {
     expect(res.json().error.code).toBe('NOT_FOUND');
   });
 });
+
+describe('explorer UI', () => {
+  it('is served at / as a static page', async () => {
+    const app = await testApp(fakeFetcher({}));
+    const res = await app.inject('/');
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toMatch(/text\/html/);
+    expect(res.body).toContain('Image API Explorer');
+  });
+});

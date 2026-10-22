@@ -40,7 +40,8 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
 
   app.setErrorHandler((error, req, reply) => {
     if (error instanceof ApiError) {
-      if (error.statusCode >= 500) req.log.warn({ code: error.code, msg: error.message }, 'request failed');
+      // Upstream causes are logged for operators but never sent to clients.
+      if (error.statusCode >= 500) req.log.warn({ code: error.code, err: error.cause ?? error }, error.message);
       return reply.code(error.statusCode).send(error.toBody(req.id));
     }
     req.log.error(error, 'unhandled error');

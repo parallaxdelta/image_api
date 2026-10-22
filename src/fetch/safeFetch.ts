@@ -88,7 +88,7 @@ export function createSafeFetcher(limits: FetchLimits): SourceFetcher {
       } catch (err) {
         if (causeChainHas(err, BLOCKED)) throw new ApiError('URL_NOT_ALLOWED', 'URL resolves to a private or reserved network address');
         if (signal.aborted) throw new ApiError('SOURCE_TIMEOUT', `Source did not respond within ${limits.timeoutMs}ms`);
-        throw new ApiError('SOURCE_UNREACHABLE', `Could not connect to ${url.host}`);
+        throw new ApiError('SOURCE_UNREACHABLE', `Could not connect to ${url.host}`, undefined, { cause: err });
       }
 
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
@@ -123,7 +123,7 @@ export function createSafeFetcher(limits: FetchLimits): SourceFetcher {
       } catch (err) {
         if (err instanceof ApiError) throw err;
         if (signal.aborted) throw new ApiError('SOURCE_TIMEOUT', `Source did not finish within ${limits.timeoutMs}ms`);
-        throw new ApiError('SOURCE_UNREACHABLE', 'Connection to source failed mid-download');
+        throw new ApiError('SOURCE_UNREACHABLE', 'Connection to source failed mid-download', undefined, { cause: err });
       }
 
       const ct = res.headers['content-type'];

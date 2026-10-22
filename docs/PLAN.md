@@ -18,14 +18,16 @@ Budget: "a couple of hours" — trade-offs documented > extra features.
 - [ ] Decide: should upstream 404 surface as 404 instead of 502? (currently 502 + `details.upstreamStatus`)
 - [ ] `HEAD /process`? (Fastify auto-adds HEAD for GET — verify behaviour)
 
-## Part 2 — UI (next)
+## Part 2 — UI ✅ built (public/index.html, app.js, styles.css)
 Vanilla HTML/JS in `public/`, served by the same app, calling `/process` like any consumer.
-- [ ] Form: URL, width, height, format, quality (slider), crop mode; sample-image buttons for the empty state
-- [ ] Side-by-side original vs processed with dims / format / size
+- [x] Form: URL, width, height, format, quality (slider), crop mode; sample-image buttons for the empty state
+- [x] Side-by-side original vs processed with dims / format / size
       (processed via response; original via `X-Source-*` headers — no private endpoint needed)
-- [ ] Live request URL + copy button + curl snippet
-- [ ] Error panel rendering `error.code` / `message` / `details` / `requestId`
-- [ ] Loading state; disable submit while in flight; object URL cleanup
+- [x] Live request URL + copy button + curl snippet
+- [x] Error panel rendering `error.code` / `message` / `details` / `requestId`
+- [x] Loading state; disable submit while in flight; object URL cleanup
+- [x] Explorer state round-trips through the page query string (shareable links)
+- [ ] Polish pass at real browser size (only checked in a small pane so far)
 
 ## Part 3 — Deploy (AWS, waiting on credentials)
 Constraint: free tier, up ≥7 days, reproducible from repo, secrets via env.
