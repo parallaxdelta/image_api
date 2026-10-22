@@ -1,0 +1,48 @@
+# Plan & status
+
+Brief: Ours Privacy SWE take-home — Cloudinary-style image service + explorer UI.
+Received 2026-10-20 · **submit to akim@oursprivacy.com by 2026-10-27** · deployment (if any) must stay up ≥7 days after submitting.
+Budget: "a couple of hours" — trade-offs documented > extra features.
+
+## Part 1 — API ✅ scaffolded and working
+- [x] `GET /process?url&width&height&format&quality&crop`
+- [x] Strict param validation (unknown params → 400 so typos like `widht` are caught)
+- [x] Uniform error envelope `{ error: { code, message, details? }, requestId }`
+- [x] SSRF guard: http/https only, ports 80/443, no creds-in-URL, IP-literal check,
+      connect-time DNS check (defeats rebinding), redirects re-validated per hop (max 3)
+- [x] Limits: 8s total fetch budget, 15MB source, 40MP decode cap, 4000px output, sharp 10s timeout
+- [x] Input-type allowlist via content sniffing (not Content-Type); SVG excluded
+- [x] Rate limit 60/min/IP on `/process` only
+- [x] Cache: byte-bounded LRU + single-flight, `Cache-Control`, `ETag`/304, `X-Cache`
+- [x] `/health`, request IDs (honours inbound `x-request-id`), CORS w/ exposed metadata headers
+- [ ] Decide: should upstream 404 surface as 404 instead of 502? (currently 502 + `details.upstreamStatus`)
+- [ ] `HEAD /process`? (Fastify auto-adds HEAD for GET — verify behaviour)
+
+## Part 2 — UI (next)
+Vanilla HTML/JS in `public/`, served by the same app, calling `/process` like any consumer.
+- [ ] Form: URL, width, height, format, quality (slider), crop mode; sample-image buttons for the empty state
+- [ ] Side-by-side original vs processed with dims / format / size
+      (processed via response; original via `X-Source-*` headers — no private endpoint needed)
+- [ ] Live request URL + copy button + curl snippet
+- [ ] Error panel rendering `error.code` / `message` / `details` / `requestId`
+- [ ] Loading state; disable submit while in flight; object URL cleanup
+
+## Part 3 — Deploy (AWS, waiting on credentials)
+Constraint: free tier, up ≥7 days, reproducible from repo, secrets via env.
+Options to decide between when creds arrive:
+1. **Lambda (container image from this Dockerfile) + Function URL, CloudFront in front** — effectively free,
+   CloudFront provides the shared cache layer; needs a small `src/lambda.ts` adapter (`@fastify/aws-lambda`).
+   Cold starts ~1s (sharp). In-memory cache/rate limit become per-instance → note in README.
+2. **EC2 t-class free-tier instance running the Docker image** — simplest mental model, no adapter,
+   but depends on the account's free-tier eligibility and needs TLS (Caddy) + a box to babysit.
+3. App Runner / ECS Fargate — cleanest container hosting but not free.
+IaC: whichever we pick, keep it in `infra/` (SAM/CDK/Terraform) with a documented one-command deploy.
+Set `TRUST_PROXY=true` behind CloudFront/ALB so rate limiting keys on the real client IP.
+
+## Bonus (pick ≤2)
+- [x] CI (GitHub Actions: typecheck, test, build) — already in place
+- [ ] OpenAPI spec + interactive docs (`@fastify/swagger`) — cheap given zod schemas
+- [ ] Structured logs/metrics — partly free (pino JSON logs, request IDs, cache hit counters on /health)
+
+## README must cover
+setup/run/test · live URL + deploy steps · architecture + trade-offs · limits & safeguards (with *why*) · next steps
