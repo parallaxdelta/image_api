@@ -15,8 +15,6 @@ Budget: "a couple of hours" — trade-offs documented > extra features.
 - [x] Rate limit 60/min/IP on `/process` only
 - [x] Cache: byte-bounded LRU + single-flight, `Cache-Control`, `ETag`/304, `X-Cache`
 - [x] `/health`, request IDs (honours inbound `x-request-id`), CORS w/ exposed metadata headers
-- [ ] Decide: should upstream 404 surface as 404 instead of 502? (currently 502 + `details.upstreamStatus`)
-- [ ] `HEAD /process`? (Fastify auto-adds HEAD for GET — verify behaviour)
 
 ## Part 2 — UI ✅ built (public/index.html, app.js, styles.css)
 Vanilla HTML/JS in `public/`, served by the same app, calling `/process` like any consumer.
@@ -46,7 +44,7 @@ IaC: whichever we pick, keep it in `infra/` (SAM/CDK/Terraform) with a documente
 Set `TRUST_PROXY=true` behind CloudFront/ALB so rate limiting keys on the real client IP.
 
 ## Bonus (pick ≤2)
-- [x] CI (GitHub Actions: typecheck, test, build) — already in place
+- [ ] CI did not set up.
 - [ ] OpenAPI spec + interactive docs (`@fastify/swagger`) — cheap given zod schemas
 - [x] Observability: one structured log line per request + EMF metrics, CloudFront access logs (no IPs) to CloudWatch, saved Logs Insights queries, dashboard, throttle alarm (all in CDK)
 
