@@ -29,7 +29,11 @@ Vanilla HTML/JS in `public/`, served by the same app, calling `/process` like an
 - [x] Explorer state round-trips through the page query string (shareable links)
 - [ ] Polish pass at real browser size (only checked in a small pane so far)
 
-## Part 3 — Deploy (AWS, waiting on credentials)
+## Part 3 — Deploy ✅ live at https://dv83ypneeeh28.cloudfront.net (deployed 2026-10-23, us-east-1)
+Chose option 1 below; Lambda Web Adapter instead of `@fastify/aws-lambda`, so no adapter code.
+Verified live: health, UI, transform, CloudFront HIT on repeat, ETag 304, SSRF blocks (metadata IP + rebinding host),
+errors `no-store`, direct function URL → 403. **Keep it up ≥7 days after submitting.**
+
 Constraint: free tier, up ≥7 days, reproducible from repo, secrets via env.
 Options to decide between when creds arrive:
 1. **Lambda (container image from this Dockerfile) + Function URL, CloudFront in front** — effectively free,
