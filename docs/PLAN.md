@@ -48,7 +48,7 @@ Set `TRUST_PROXY=true` behind CloudFront/ALB so rate limiting keys on the real c
 ## Bonus (pick ≤2)
 - [x] CI (GitHub Actions: typecheck, test, build) — already in place
 - [ ] OpenAPI spec + interactive docs (`@fastify/swagger`) — cheap given zod schemas
-- [ ] Structured logs/metrics — partly free (pino JSON logs, request IDs, cache hit counters on /health)
+- [x] Observability: one structured log line per request + EMF metrics, CloudFront access logs (no IPs) to CloudWatch, saved Logs Insights queries, dashboard, throttle alarm (all in CDK)
 
 ## README must cover
 setup/run/test · live URL + deploy steps · architecture + trade-offs · limits & safeguards (with *why*) · next steps

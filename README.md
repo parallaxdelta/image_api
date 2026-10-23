@@ -162,6 +162,44 @@ request ID but not leaked to clients.
   source host isn't a missing route on *this* API.
 - **Vanilla JS UI.** No build step and nothing to deploy separately; a framework would pay off only if the UI grew.
 
+## Observability
+
+Everything stays inside AWS (CloudWatch), is defined in the CDK stack, and fits in the free tier.
+
+**Structured logs.** The app writes one JSON line per request (`msg: "request completed"`) instead of Fastify's
+default pair: method, path, full URL and parsed query, status, `errorCode`, `durationMs`, `fetchMs` / `transformMs`,
+in-memory `cache` result (`hit` / `miss` / `coalesced`), source host/format/bytes, output format/bytes, request ID,
+and the viewer's country. **No client IP is logged**: it's only used, in memory, as the rate-limit key.
+The line is written just *before* the response is sent (Fastify `onSend`, synchronous write). Lambda freezes the
+environment as soon as a response is delivered, so a line logged afterwards (`onResponse`) showed up in CloudWatch only
+when the next request thawed the instance: 166 s late in testing, and never if the instance is reclaimed.
+
+**Metrics without an SDK.** The same line carries CloudWatch
+[Embedded Metric Format](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch_Embedded_Metric_Format_Specification.html)
+fields, so CloudWatch extracts metrics from the log itself (no API calls in the request path; locally it's just a log
+line). Namespace `ImageApi`, dimension `Service=image-api`, 8 metrics (inside the 10 free custom metrics):
+`Latency`, `FetchLatency`, `TransformLatency`, `CacheHit` (average = hit rate), `ClientError`, `ServerError`,
+`SourceBytes`, `OutputBytes`. Breakdowns by error code live in Logs Insights rather than as metric dimensions, which
+would multiply the metric count.
+
+**Edge logs.** CloudFront serves cache hits without invoking Lambda, so app logs alone undercount. CloudFront access
+logs are delivered to CloudWatch (`/aws/vendedlogs/cloudfront/ImageApi-access`) with an explicit field list that
+excludes `c-ip`, `c-port`, `x-forwarded-for`, `asn` and cookies. The explorer UI fetches with `cache: 'no-cache'`, so a
+repeat run revalidates with CloudFront (usually a `304` from the edge) rather than being answered silently by the
+browser cache: timings stay honest and every run is logged.
+
+**Where to look** (console, `us-east-1`):
+
+| What | Where |
+|---|---|
+| Dashboard: edge traffic and error rates, Lambda invocations/throttles/concurrency, API latency (p50/p95, fetch vs transform), cache hit rate, errors and bytes, recent edge requests, errors by code | CloudWatch → Dashboards → `ImageApi` (URL is a stack output) |
+| Every request, including edge cache hits | Logs Insights → Saved queries → `image-api/Every request (edge, incl. cache hits)` |
+| What happened inside the API | `image-api/API requests (app detail)` |
+| Everything that was rejected, and why | `image-api/Rejected requests` |
+| Alarm | `ImageApi-lambda-throttles`: any Lambda throttling in 5 minutes (no notification target configured) |
+
+Logs are kept for 30 days.
+
 ## Deployment
 
 AWS, defined in [infra/](infra/) with CDK (TypeScript):
@@ -209,11 +247,11 @@ npx cdk destroy     # tear down
 
 ## What I'd do next
 
-- **OpenAPI spec + interactive docs** generated from the zod schemas, and a small typed TypeScript client
+- **OpenAPI spec + interactive docs** For past api's I'll often include a swagger endpoint that you keep upto date with the funcitonallity of the different routes.
   (`buildUrl(params)`, typed errors).
-- **More transformations:** `format=auto` from the `Accept` header (with `Vary: Accept`), rotate, blur, grayscale, focal-point crops.
+- **More transformations:** `format=auto` from the `Accept` header (with `Vary: Accept`), rotate, blur, grayscale, focal-point crops. I did not spend much time understanding the 
 - **Shared rate limiting / caching** (WAF rate-based rule or Redis) and persisting outputs to S3.
-- **Observability:** metrics for latency, cache hit rate and error rate by code; alarms.
-- **Video thumbnails** via ffmpeg in the container, with the same fetch safeguards.
+- **Alerting:** route alarms to SNS/email, and add error-rate and latency SLO alarms; X-Ray tracing for slow upstreams.
+- **Video thumbnails** This could be done using ffmpeg, but i didnt want to set this up.
 - **Signed URLs** Implement auth with a key store, or cognito or something.
 - **CI deploys** This project was deployed via the cdk toolset, from my pc; it would need a pipeline setup for production.

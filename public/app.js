@@ -244,7 +244,9 @@ async function run() {
 
   const started = performance.now();
   try {
-    const res = await fetch(url, { signal: controller.signal });
+    // no-cache: reuse the browser's copy only after revalidating (ETag → 304), so every run is a
+    // real round trip to the API: honest timings, and it shows up in the CDN's access logs.
+    const res = await fetch(url, { signal: controller.signal, cache: 'no-cache' });
     const elapsed = Math.round(performance.now() - started);
 
     if (!res.ok) {

@@ -8,18 +8,23 @@ import { ResultCache } from './cache.js';
 import type { Config } from './config.js';
 import { ApiError } from './errors.js';
 import { createSafeFetcher, type SourceFetcher } from './fetch/safeFetch.js';
+import { completionRecord } from './observability.js';
 import { processRoutes } from './routes/process.js';
 
 export interface AppDeps {
   /** Injectable for tests; defaults to the SSRF-guarded fetcher. */
   fetchSource?: SourceFetcher;
+  /** Where logs go; defaults to stdout (which Lambda ships to CloudWatch). Tests capture it. */
+  logStream?: NodeJS.WritableStream;
 }
 
 const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 
 export async function buildApp(config: Config, deps: AppDeps = {}): Promise<FastifyInstance> {
   const app = Fastify({
-    logger: { level: config.LOG_LEVEL },
+    logger: { level: config.LOG_LEVEL, ...(deps.logStream ? { stream: deps.logStream } : {}) },
+    // Replaced by one structured "request completed" line per request (see the onSend hook below).
+    disableRequestLogging: true,
     trustProxy: config.TRUST_PROXY,
     genReqId: (req) => {
       const incoming = req.headers['x-request-id'];
@@ -32,20 +37,35 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<Fast
     deps.fetchSource ??
     createSafeFetcher({ timeoutMs: config.FETCH_TIMEOUT_MS, maxBytes: config.MAX_SOURCE_BYTES, maxRedirects: config.MAX_REDIRECTS });
 
+  app.decorateRequest('obs', null as never);
+  app.addHook('onRequest', async (req) => {
+    req.obs = {};
+  });
+  // onSend, not onResponse: on Lambda the environment is frozen as soon as the response is
+  // delivered, so a line written afterwards only reaches CloudWatch on the next invocation (or
+  // never, if the instance is reclaimed). pino writes synchronously, so this lands first.
+  app.addHook('onSend', async (req, reply, payload) => {
+    req.log.info(completionRecord(req, reply), 'request completed');
+    return payload;
+  });
+
   // Must be set before routes register: Fastify plugins inherit handlers at registration time.
   app.setNotFoundHandler((req, reply) => {
     const err = new ApiError('NOT_FOUND', `No route for ${req.method} ${req.url.split('?')[0]}`);
+    (req.obs ??= {}).errorCode = err.code;
     reply.code(err.statusCode).header('cache-control', 'no-store').send(err.toBody(req.id));
   });
 
   app.setErrorHandler((error, req, reply) => {
     reply.header('cache-control', 'no-store'); // never let a CDN cache an error
     if (error instanceof ApiError) {
+      (req.obs ??= {}).errorCode = error.code;
       // Upstream causes are logged for operators but never sent to clients.
       if (error.statusCode >= 500) req.log.warn({ code: error.code, err: error.cause ?? error }, error.message);
       return reply.code(error.statusCode).send(error.toBody(req.id));
     }
     req.log.error(error, 'unhandled error');
+    (req.obs ??= {}).errorCode = 'INTERNAL';
     const internal = new ApiError('INTERNAL', 'Something went wrong; include the requestId if you report this');
     return reply.code(500).send(internal.toBody(req.id));
   });

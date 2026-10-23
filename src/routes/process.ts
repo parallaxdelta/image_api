@@ -36,18 +36,34 @@ export const processRoutes: FastifyPluginAsync<ProcessRouteOptions> = async (app
   app.get('/process', async (req, reply) => {
     const params = parseProcessParams(req.query, config.MAX_OUTPUT_DIMENSION);
     const key = cacheKey(params);
+    req.obs.sourceHost = hostOf(params.url);
 
-    const { value, hit } = await cache.getOrCompute(key, async () => {
+    const { value, outcome } = await cache.getOrCompute(key, async () => {
+      // Only the request that does the work gets here, so timings are attributed to it alone.
+      req.obs.cache = 'miss';
+      let start = performance.now();
       const source = await fetchSource(params.url);
+      req.obs.fetchMs = performance.now() - start;
+
+      start = performance.now();
       const result = await transformImage(source.body, params, { maxInputPixels: config.MAX_INPUT_PIXELS });
+      req.obs.transformMs = performance.now() - start;
+
       const etag = `"${createHash('sha1').update(result.data).digest('base64url')}"`;
       return { ...result, etag };
+    });
+
+    Object.assign(req.obs, {
+      cache: outcome,
+      sourceFormat: value.source.format,
+      sourceBytes: value.source.bytes,
+      outputFormat: value.output.format,
     });
 
     reply
       .header('cache-control', `public, max-age=${config.CACHE_TTL_SECONDS}`)
       .header('etag', value.etag)
-      .header('x-cache', hit ? 'HIT' : 'MISS')
+      .header('x-cache', outcome === 'miss' ? 'MISS' : 'HIT')
       .header('x-source-format', value.source.format)
       .header('x-source-width', value.source.width)
       .header('x-source-height', value.source.height)
@@ -56,6 +72,15 @@ export const processRoutes: FastifyPluginAsync<ProcessRouteOptions> = async (app
       .header('x-output-height', value.output.height);
 
     if (req.headers['if-none-match'] === value.etag) return reply.code(304).send();
+    req.obs.outputBytes = value.output.bytes;
     return reply.type(MIME[value.output.format as keyof typeof MIME]).send(value.data);
   });
 };
+
+function hostOf(url: string): string | undefined {
+  try {
+    return new URL(url).host;
+  } catch {
+    return undefined;
+  }
+}

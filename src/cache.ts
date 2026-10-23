@@ -1,4 +1,5 @@
 import { LRUCache } from 'lru-cache';
+import type { CacheOutcome } from './observability.js';
 import type { TransformResult } from './transform.js';
 
 export interface CachedImage extends TransformResult {
@@ -24,23 +25,27 @@ export class ResultCache {
     });
   }
 
-  async getOrCompute(key: string, compute: () => Promise<CachedImage>): Promise<{ value: CachedImage; hit: boolean }> {
+  /** `coalesced` = joined an identical request already in flight (no extra work done). */
+  async getOrCompute(
+    key: string,
+    compute: () => Promise<CachedImage>,
+  ): Promise<{ value: CachedImage; outcome: CacheOutcome }> {
     const cached = this.lru.get(key);
     if (cached) {
       this.hits++;
-      return { value: cached, hit: true };
+      return { value: cached, outcome: 'hit' };
     }
     this.misses++;
-    let pending = this.inflight.get(key);
-    if (!pending) {
-      pending = compute()
-        .then((v) => {
-          this.lru.set(key, v);
-          return v;
-        })
-        .finally(() => this.inflight.delete(key));
-      this.inflight.set(key, pending);
-    }
-    return { value: await pending, hit: false };
+    const inflight = this.inflight.get(key);
+    if (inflight) return { value: await inflight, outcome: 'coalesced' };
+
+    const pending = compute()
+      .then((v) => {
+        this.lru.set(key, v);
+        return v;
+      })
+      .finally(() => this.inflight.delete(key));
+    this.inflight.set(key, pending);
+    return { value: await pending, outcome: 'miss' };
   }
 }

@@ -7,6 +7,7 @@ import { Platform } from 'aws-cdk-lib/aws-ecr-assets';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import type { Construct } from 'constructs';
+import { Observability } from './observability.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -27,8 +28,10 @@ export class ImageApiStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props);
 
+    // Long enough to cover the review window (reviewers may test any time in the week after submission).
+    const retention = logs.RetentionDays.ONE_MONTH;
     const logGroup = new logs.LogGroup(this, 'Logs', {
-      retention: logs.RetentionDays.ONE_WEEK,
+      retention,
       removalPolicy: RemovalPolicy.DESTROY,
     });
 
@@ -73,7 +76,8 @@ export class ImageApiStack extends Stack {
     // Forwarded to the origin but not part of the cache key.
     const originRequestPolicy = new cloudfront.OriginRequestPolicy(this, 'ForwardViewer', {
       queryStringBehavior: cloudfront.OriginRequestQueryStringBehavior.all(),
-      headerBehavior: cloudfront.OriginRequestHeaderBehavior.allowList('CloudFront-Viewer-Address'),
+      // Address: rate-limit key (never logged). Country: logged instead of the IP.
+      headerBehavior: cloudfront.OriginRequestHeaderBehavior.allowList('CloudFront-Viewer-Address', 'CloudFront-Viewer-Country'),
       cookieBehavior: cloudfront.OriginRequestCookieBehavior.none(),
     });
 
@@ -97,7 +101,14 @@ export class ImageApiStack extends Stack {
       },
     });
 
+    const obs = new Observability(this, 'Observability', { fn, appLogs: logGroup, distribution, retention });
+
     new CfnOutput(this, 'Url', { value: `https://${distribution.distributionDomainName}` });
+    new CfnOutput(this, 'Dashboard', {
+      value: `https://${this.region}.console.aws.amazon.com/cloudwatch/home?region=${this.region}#dashboards/dashboard/${obs.dashboardName}`,
+    });
+    new CfnOutput(this, 'AppLogGroup', { value: logGroup.logGroupName });
+    new CfnOutput(this, 'EdgeLogGroup', { value: obs.edgeLogs.logGroupName });
     new CfnOutput(this, 'FunctionName', { value: fn.functionName });
   }
 }
